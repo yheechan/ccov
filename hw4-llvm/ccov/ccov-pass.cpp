@@ -127,7 +127,7 @@ namespace {
 			 * all executions of runOnFunction() under the module. */
 
 			// Fill out.
-			// M.dump();
+			M.dump();
 			of.close();
 
 			return false;

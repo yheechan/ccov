@@ -46,10 +46,10 @@ lib/ccov-rt.o: ccov/ccov-rt.c
 	mkdir -p lib
 	$(CC) $(CFLAGS) -c $< -o $@
 
-ccov_test: test/example.c ccov 
+ccov_test: test/example1.c ccov 
 	$(CC) --ld-path=ld.lld -fno-experimental-new-pass-manager $< lib/ccov-rt.o -g -O0 -Xclang -load -Xclang lib/libccov.so -o ./test/example-ccov
 
-ccov_grep: test/grep/grep.i ccov 
+ccov_grep: test/grep/grep.c ccov 
 	$(CC) --ld-path=ld.lld -fno-experimental-new-pass-manager $< lib/ccov-rt.o -g -O0 -Xclang -load -Xclang lib/libccov.so -o ./test/grep/grep
 
 clean:
