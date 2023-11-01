@@ -31,7 +31,7 @@
 using namespace llvm;
 using namespace std;
 
-#define MAX 100000
+#define MAX 1000000
 
 namespace {
   class CCov: public FunctionPass {
@@ -105,7 +105,7 @@ namespace {
 			p_probe= M.getOrInsertFunction("_probe_", 
 					FunctionType::get(voidTy, ArrayRef<Type *>(args_types), false)) ;
 			
-			of.open("test/initCoverage.dat", ios::trunc&ios::in);
+			of.open("initCoverage.dat", ios::trunc&ios::in);
 			
 			/* add a function call to _init_ at the beginning of 
 			 * the main function*/
@@ -115,8 +115,8 @@ namespace {
 				IRB->SetInsertPoint(mainFunc->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
 				IRB->CreateCall(p_init, {});
 
-				IRB->SetInsertPoint(mainFunc->back().getTerminator());
-				IRB->CreateCall(p_final, {});
+				// IRB->SetInsertPoint(mainFunc->back().getTerminator());
+				// IRB->CreateCall(p_final, {});
 			}
 
 			return true;
@@ -142,9 +142,7 @@ namespace {
 			/* Invoke runOnBasicBlock() for each basic block under F. */
 			for (Function::iterator itr = F.begin(); itr != F.end(); itr++) {
 				runOnBasicBlock(*itr);
-				cout << "=============\n";
 			}
-			cout << "*****************\n";
 
 			return true;
 		} //runOnFunction.
@@ -200,13 +198,13 @@ namespace {
 						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
 						args[3] = ConstantInt::get(intTy, 1, false);
 						args[4] = ConstantInt::get(intTy, 0, false);
-						IRB->SetInsertPoint(&(tDest->front()));
+						IRB->SetInsertPoint(&(tDest->back()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 
 
 						args[3] = ConstantInt::get(intTy, 0, false);
 						args[4] = ConstantInt::get(intTy, 1, false);
-						IRB->SetInsertPoint(&(fDest->front()));
+						IRB->SetInsertPoint(&(fDest->back()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 					}
 				} else if (i->getOpcode() == Instruction::Switch) {
@@ -235,7 +233,7 @@ namespace {
 						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
 						args[3] = ConstantInt::get(intTy, 1, false);
 						args[4] = ConstantInt::get(intTy, 0, false);
-						IRB->SetInsertPoint(&(succDest->front()));
+						IRB->SetInsertPoint(&(succDest->back()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 					}
 

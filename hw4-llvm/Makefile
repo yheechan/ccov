@@ -48,8 +48,9 @@ lib/ccov-rt.o: ccov/ccov-rt.c
 
 ccov_test: test/example.c ccov 
 	$(CC) --ld-path=ld.lld -fno-experimental-new-pass-manager $< lib/ccov-rt.o -g -O0 -Xclang -load -Xclang lib/libccov.so -o ./test/example-ccov
-	# ./test/example-ccov
-	# cat log-ccov
+
+ccov_grep: test/grep/grep.i ccov 
+	$(CC) --ld-path=ld.lld -fno-experimental-new-pass-manager $< lib/ccov-rt.o -g -O0 -Xclang -load -Xclang lib/libccov.so -o ./test/grep/grep
 
 clean:
-	rm -f lib/*.so lib/*.o test/example log test/example-ccov log-ccov
+	rm -f lib/*.so lib/*.o test/example log test/example-ccov log-ccov test/grep/grep test/grep/initCoverage.dat test/grep/Coverage.dat test/initCoverage.dat test/Coverage.dat
