@@ -48,11 +48,6 @@ namespace {
 		FunctionCallee p_init; // points to the function instance of _init_.
 		FunctionCallee p_final; // points to the function instance of _init_.
 		FunctionCallee p_probe; // points to the function instance of _probe_.
-		FunctionCallee hcy_test;
-
-		StructType * myStructType;
-		ArrayType * myArrayType;
-		// GlobalVariable * branchCount;
 
 		int branchCount = -1;
 		int branchCondCount[MAX] = {0};
@@ -112,45 +107,6 @@ namespace {
 			
 			of.open("test/initCoverage.dat", ios::trunc&ios::in);
 			
-
-			/* define my own Struct Type */
-			// myStructType = StructType::create(M.getContext(), "struct.myStructType");
-			// Type * structElements[4];
-			// structElements[0] = intTy;
-			// structElements[1] = intTy;
-			// structElements[2] = intTy;
-			// structElements[3] = intTy;
-			// myStructType->setBody(structElements);
-
-			/* initate an array of myStructType as global variable:
-			* holds the coverage information for each branch */
-			// myArrayType = ArrayType::get(myStructType, MAX);
-
-			// auto myArray = new GlobalVariable(
-			// 	M, myArrayType, false,
-			// 	GlobalValue::CommonLinkage,
-			// 	0, "myArray"
-			// );
-			// myArray->setAlignment(llvm::MaybeAlign(16));
-			// ConstantAggregateZero * const_array = ConstantAggregateZero::get(myArrayType);
-			// myArray->setInitializer(const_array);
-
-			/* initate an integer indicating total number of branch */
-			// branchCount = new GlobalVariable(
-			// 	M, intTy, false,
-			// 	GlobalValue::CommonLinkage,
-			// 	ConstantInt::get(intTy, 0, false), "branchCount"
-			// );
-			// branchCount->setAlignment(llvm::MaybeAlign(4));
-
-			// test hcy here
-			// Type * args_types_hcy[1];
-			// args_types_hcy[0] = myStructType;
-			// hcy_test = M.getOrInsertFunction("_hcy_",
-			// 	FunctionType::get(voidTy, ArrayRef<Type *>(args_types_hcy), false));
-			// Value * idx = ConstantInt::get(intTy, 0, false);
-			// Value * indices[] = {idx, idx, idx};
-
 			/* add a function call to _init_ at the beginning of 
 			 * the main function*/
 			Function * mainFunc = M.getFunction(StringRef("main"));
@@ -161,16 +117,6 @@ namespace {
 
 				IRB->SetInsertPoint(mainFunc->back().getTerminator());
 				IRB->CreateCall(p_final, {});
-
-				// Value * elementPtr = IRB->CreateGEP(
-				// 	myArrayType, myArray, indices, Twine("")
-				// );
-				// IRB->CreateStore(
-				// 	ConstantInt::get(Type::getInt32Ty(M.getContext()), 87),
-				// 	elementPtr
-				// );
-				// LoadInst * load = IRB->CreateLoad(intTy, elementPtr);
-				// IRB->CreateCall(hcy_test, myArray, Twine(""));
 			}
 
 			return true;
@@ -181,7 +127,7 @@ namespace {
 			 * all executions of runOnFunction() under the module. */
 
 			// Fill out.
-			M.dump();
+			// M.dump();
 			of.close();
 
 			return false;
@@ -219,10 +165,7 @@ namespace {
 				/* for each instruction of the basic block in order */
 
 				if (i->getOpcode() == Instruction::Br) {
-					cout << i->getOpcodeName() << " - ";
-
 					BranchInst * br = dyn_cast<BranchInst>(i);
-					// br->dump();
 
 					const DebugLoc &debugloc = br->getDebugLoc();
 					int loc = -1;
@@ -230,20 +173,26 @@ namespace {
 						loc = debugloc.getLine();
 					}
 
-					cout << loc << endl;
-
 					if (br->isConditional()) {
-						// writing initial data to initCoverage.dat
-						br->dump();
-						branchCount++;
-						branchCondCount[loc]++;
-						writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
-
-						Value * condition = br->getCondition();
-						condition->dump();
-
 						BasicBlock * tDest = br->getSuccessor(0);
 						BasicBlock * fDest = br->getSuccessor(1);
+
+						int doWhileFlag = 0;
+						for (BasicBlock * pred : predecessors(tDest)) {
+							Instruction * termInst = pred->getTerminator();
+							if (termInst->getOpcode() == Instruction::Br) {
+								BranchInst * termBr = dyn_cast<BranchInst>(termInst);
+								if (termBr->isUnconditional()) {
+									doWhileFlag = -1;
+								}
+							}
+						}
+
+						// writing initial data to initCoverage.dat
+						branchCount++;
+						branchCondCount[loc]++;
+						writeInitData(branchCount, loc, branchCondCount[loc]-1, doWhileFlag, 0);
+
 
 						Value * args[5];
 						args[0] = ConstantInt::get(intTy, branchCount, false);
@@ -260,35 +209,52 @@ namespace {
 						IRB->SetInsertPoint(&(fDest->front()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 					}
+				} else if (i->getOpcode() == Instruction::Switch) {
+					SwitchInst * sw = dyn_cast<SwitchInst>(i);
+
+					const DebugLoc &debugloc = sw->getDebugLoc();
+					int loc = -1;
+					if (debugloc) {
+						loc = debugloc.getLine();
+					}
+
+					int numSucc = sw->getNumSuccessors();
+
+					int j=0;
+					// for cases
+					for (j=1; j<numSucc; j++) {
+						branchCount++;
+						branchCondCount[loc]++;
+						writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
+
+						BasicBlock * succDest = sw->getSuccessor(j);
+
+						Value * args[5];
+						args[0] = ConstantInt::get(intTy, branchCount, false);
+						args[1] = ConstantInt::get(intTy, loc, false);
+						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
+						args[3] = ConstantInt::get(intTy, 1, false);
+						args[4] = ConstantInt::get(intTy, 0, false);
+						IRB->SetInsertPoint(&(succDest->front()));
+						IRB->CreateCall(p_probe, args, Twine(""));
+					}
+
+					// for default
+					branchCount++;
+					branchCondCount[loc]++;
+					writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
+
+					BasicBlock * succDest = sw->getSuccessor(0);
+
+					Value * args[5];
+					args[0] = ConstantInt::get(intTy, branchCount, false);
+					args[1] = ConstantInt::get(intTy, loc, false);
+					args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
+					args[3] = ConstantInt::get(intTy, 1, false);
+					args[4] = ConstantInt::get(intTy, 0, false);
+					IRB->SetInsertPoint(&(succDest->front()));
+					IRB->CreateCall(p_probe, args, Twine(""));
 				}
-
-				// if (i->getOpcode() == Instruction::Store) {
-				// 	if (i->getOperand(0)->getType() == intTy) {
-				// 		StoreInst * st = dyn_cast<StoreInst>(i) ;
-
-				// 		/* add a function call to _probe_ right before
-				// 			* a store instruction on an integer variable. */
-
-				// 		const DebugLoc &debugloc = st->getDebugLoc();
-
-				// 		int loc = -1;
-				// 		if (debugloc) {
-				// 			loc = debugloc.getLine();
-				// 		}
-
-				// 		// Value * var = st->getPointerOperand() ; // the target variable 
-				// 		Value * val = st->getOperand(0) ; // the value to be assigned.
-
-				// 		IRB->SetInsertPoint(&(*i));
-
-				// 		Value * args[3] ;
-				// 		args[0] = ConstantInt::get(intTy, loc, false) ; // location of store instruction.
-				// 		args[1] = IRB->CreateGlobalStringPtr(funcname, "") ; // create a new string constant of the variable name, and get the pointer to it.
-				// 		args[2] = val ; // the value to be assigned to the variable.
-				// 		IRB->CreateCall(p_probe, args, Twine("")) ;
-				// 		continue ;
-				// 	}
-				// }	
 			}
 
 			return true;

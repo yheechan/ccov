@@ -74,15 +74,10 @@ extern void _init_() {
 	}
 
 	fclose(fp);
-	// atexit(_final_) ;
 }
 
 // increment values
 extern void _probe_(int idx, int lineNum, int idxNum, int tNum, int fNum) {
 	myArray[idx].trueCnt += tNum;
 	myArray[idx].falseCnt += fNum;
-}
-
-extern void _hcy_(struct myStructType tmp[]) {
-	fprintf(fp, "hcy here %d\n", 2);
 }
