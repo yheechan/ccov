@@ -48,8 +48,8 @@ lib/ccov-rt.o: ccov/ccov-rt.c
 
 ccov_test: test/example.c ccov 
 	$(CC) --ld-path=ld.lld -fno-experimental-new-pass-manager $< lib/ccov-rt.o -g -O0 -Xclang -load -Xclang lib/libccov.so -o ./test/example-ccov
-	./test/example-ccov
-	cat log-ccov
+	# ./test/example-ccov
+	# cat log-ccov
 
 clean:
 	rm -f lib/*.so lib/*.o test/example log test/example-ccov log-ccov

@@ -1,14 +1,6 @@
 //example.c
 int static_var = 1;
 
-struct HelloWorld {
-	int x;
-	int y;
-	int z;
-};
-
-struct HelloWorld hw[10];
-
 int f1(int a) {
 	static_var++;
 	//if-else
@@ -20,9 +12,6 @@ int f1(int a) {
 }
 
 int main() {
-	hw[1].z = 22;
-	int b = f1(hw[1].z);
-
 	int a = 0;
 	a = f1(a);
 	//if-else if-else

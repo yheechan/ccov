@@ -1,7 +1,7 @@
 #define DEBUG_TYPE "CCov"
 
 #include <iostream>
-#include <vector>
+#include <fstream>
 
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/Pass.h"
@@ -31,6 +31,8 @@
 using namespace llvm;
 using namespace std;
 
+#define MAX 100000
+
 namespace {
   class CCov: public FunctionPass {
 	public:
@@ -43,13 +45,18 @@ namespace {
 
 		Type *intTy, *ptrTy, *voidTy, *boolTy ; // These variables are to store the type instances for primitive types.
 		
-		FunctionCallee p_init ; // points to the function instance of _init_.
-		FunctionCallee p_probe ; // points to the function instance of _probe_.
+		FunctionCallee p_init; // points to the function instance of _init_.
+		FunctionCallee p_final; // points to the function instance of _init_.
+		FunctionCallee p_probe; // points to the function instance of _probe_.
 		FunctionCallee hcy_test;
 
 		StructType * myStructType;
 		ArrayType * myArrayType;
-		// auto * myArray;
+		// GlobalVariable * branchCount;
+
+		int branchCount = -1;
+		int branchCondCount[MAX] = {0};
+		ofstream of;
 
 		IRBuilder<> * IRB;
 
@@ -66,6 +73,10 @@ namespace {
 				errs() << "Error: function _init_() already exists.\n" ;
 				exit(1) ;
 			}
+			if (M.getFunction(StringRef("_final_")) != NULL) {
+				errs() << "Error: function _final_() already exists.\n" ;
+				exit(1) ;
+			}
 			if (M.getFunction(StringRef("_probe_")) != NULL) {
 				errs() << "Error: function _probe_() already exists.\n" ;
 				exit(1) ;
@@ -74,100 +85,71 @@ namespace {
 			errs() << "Running intwrite pass\n";
 
 			/* store the type instances for primitive types */
-			boolTy = Type::getInt1Ty(M.getContext()) ;
-			intTy = Type::getInt32Ty(M.getContext()) ;
-			ptrTy = Type::getInt8PtrTy(M.getContext()) ;
-			voidTy = Type::getVoidTy(M.getContext()) ;
+			boolTy = Type::getInt1Ty(M.getContext());
+			ptrTy = Type::getInt8PtrTy(M.getContext());
+			intTy = Type::getInt32Ty(M.getContext());
+			voidTy = Type::getVoidTy(M.getContext());
 
 			/* add a new declaration of function _init_ which has no argument */
-			FunctionType * fty = FunctionType::get(voidTy, false) ;
-			p_init = M.getOrInsertFunction("_init_", fty) ;
+			FunctionType * fty = FunctionType::get(voidTy, false);
+			p_init = M.getOrInsertFunction("_init_", fty);
 
-			/* add a new declaration of function _probe_ which accept three
-			 * arguments (i.e., int, char *, and int) */
-			Type * args_types[3] ;
-			args_types[0] = intTy ; //Type::getInt32Ty(*ctx) ;
-			args_types[1] = ptrTy ; //Type::getInt8PtrTy(*ctx) ;	
-			args_types[2] = intTy ; //Type::getInt32Ty(*ctx) ;	
-			p_probe = M.getOrInsertFunction("_probe_", 
+			/* add a new declaration of function _init_ which has no argument */
+			p_final = M.getOrInsertFunction("_final_", fty);
+
+			/* add a new declaration of function _writeInit_
+			 * which accepts 4 arguments (i.e., int, int, int, int)
+			 * to write inital coverage data for each found branch as 0
+			 */
+			Type * args_types[5];
+			args_types[0] = intTy;
+			args_types[1] = intTy;
+			args_types[2] = intTy;
+			args_types[3] = intTy;
+			args_types[4] = intTy;
+			p_probe= M.getOrInsertFunction("_probe_", 
 					FunctionType::get(voidTy, ArrayRef<Type *>(args_types), false)) ;
 			
-			/* define my own Struct Type 
-			* and initiate array of Struct Type to hold the coverage information */
-			myStructType = StructType::create(M.getContext(), "struct.myStructType");
-			Type * structElements[4];
-			structElements[0] = intTy;
-			structElements[1] = intTy;
-			structElements[2] = intTy;
-			structElements[3] = intTy;
-			myStructType->setBody(structElements);
+			of.open("test/initCoverage.dat", ios::trunc&ios::in);
+			
 
-			myArrayType = ArrayType::get(myStructType, 10);
+			/* define my own Struct Type */
+			// myStructType = StructType::create(M.getContext(), "struct.myStructType");
+			// Type * structElements[4];
+			// structElements[0] = intTy;
+			// structElements[1] = intTy;
+			// structElements[2] = intTy;
+			// structElements[3] = intTy;
+			// myStructType->setBody(structElements);
 
-			auto myArray = new GlobalVariable(
-				M, myArrayType, false,
-				GlobalValue::CommonLinkage,
-				0, "myArray"
-			);
-			myArray->setAlignment(llvm::MaybeAlign(16));
-			ConstantAggregateZero * const_array = ConstantAggregateZero::get(myArrayType);
-			myArray->setInitializer(const_array);
+			/* initate an array of myStructType as global variable:
+			* holds the coverage information for each branch */
+			// myArrayType = ArrayType::get(myStructType, MAX);
+
+			// auto myArray = new GlobalVariable(
+			// 	M, myArrayType, false,
+			// 	GlobalValue::CommonLinkage,
+			// 	0, "myArray"
+			// );
+			// myArray->setAlignment(llvm::MaybeAlign(16));
+			// ConstantAggregateZero * const_array = ConstantAggregateZero::get(myArrayType);
+			// myArray->setInitializer(const_array);
+
+			/* initate an integer indicating total number of branch */
+			// branchCount = new GlobalVariable(
+			// 	M, intTy, false,
+			// 	GlobalValue::CommonLinkage,
+			// 	ConstantInt::get(intTy, 0, false), "branchCount"
+			// );
+			// branchCount->setAlignment(llvm::MaybeAlign(4));
 
 			// test hcy here
-			Type * args_types_hcy[1];
-			args_types_hcy[0] = intTy;
-			hcy_test = M.getOrInsertFunction("_hcy_",
-				FunctionType::get(voidTy, ArrayRef<Type *>(args_types_hcy), false));
-			Value * idx = ConstantInt::get(intTy, 0, false);
-			Value * indices[] = {idx, idx, idx};
-
-
-			// auto smile = GetElementPtrInst::Create(
-			// 	myArrayType, myArray, indices, Twine("")
-			// );
-			// smile->dump();
-
-
-
-
-			// /* add a global definition of a structure */
-			// auto type = intTy;
-			// auto x = ConstantInt::get(intTy, 1, false);
-			// auto gv = new GlobalVariable(
-			// 	M, type, false,
-			// 	GlobalValue::CommonLinkage,
-			// 	x, "tmp_test"
-			// );
-			// gv->setAlignment(llvm::MaybeAlign(4));
-			// gv->dump();
-
-			// Value * args[1];
-			// // args[0] = gv->getOperand(0);
-			// args[0] = gv;
-
-			// Type * types[4];
-			// types[0] = intTy;
-			// types[1] = intTy;
-			// types[2] = intTy;
-			// types[3] = intTy;
-
-			// Value * inps[4];
-			// inps[0] = ConstantInt::get(intTy, 0, false);
-			// inps[1] = ConstantInt::get(intTy, 0, false);
-			// inps[2] = ConstantInt::get(intTy, 0, false);
-			// inps[3] = ConstantInt::get(intTy, 0, false);
-			// StructType * st = StructType::create(M.getContext(), "S");
-			// st->setBody(types);
-			// Constant * insType = M.getOrInsertGlobal("makeS", st);
-
-
-
-
-			// auto nw_gv = new GlobalVariable(
-			// 	M, st, false,
-			// 	GlobalValue::CommonLinkage,
-			// 	inps, "mest"
-			// )
+			// Type * args_types_hcy[1];
+			// args_types_hcy[0] = myStructType;
+			// hcy_test = M.getOrInsertFunction("_hcy_",
+			// 	FunctionType::get(voidTy, ArrayRef<Type *>(args_types_hcy), false));
+			// Value * idx = ConstantInt::get(intTy, 0, false);
+			// Value * indices[] = {idx, idx, idx};
 
 			/* add a function call to _init_ at the beginning of 
 			 * the main function*/
@@ -175,37 +157,23 @@ namespace {
 			IRB = new IRBuilder<>(M.getContext());
 			if (mainFunc != NULL) {
 				IRB->SetInsertPoint(mainFunc->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-				IRB->CreateCall(p_init, {}) ;
-				Value * elementPtr = IRB->CreateGEP(
-					myArrayType, myArray, indices, Twine("")
-				);
-				IRB->CreateStore(
-					ConstantInt::get(Type::getInt32Ty(M.getContext()), 8),
-					elementPtr
-				);
-				LoadInst * load = IRB->CreateLoad(intTy, elementPtr);
-				IRB->CreateCall(hcy_test, load, Twine(""));
-				// IRB->CreateStore(
-				// 	idx, 
-				// 	GetElementPtrInst::Create(
-				// 		myArrayType, myArray, indices, Twine("")
-				// 	)
+				IRB->CreateCall(p_init, {});
+
+				IRB->SetInsertPoint(mainFunc->back().getTerminator());
+				IRB->CreateCall(p_final, {});
+
+				// Value * elementPtr = IRB->CreateGEP(
+				// 	myArrayType, myArray, indices, Twine("")
 				// );
-				// LoadInst * load = IRB->CreateLoad(intTy, gv);
-				// args[0] = load;
-				// IRB->CreateCall(hcy_test, args, Twine("")) ;
+				// IRB->CreateStore(
+				// 	ConstantInt::get(Type::getInt32Ty(M.getContext()), 87),
+				// 	elementPtr
+				// );
+				// LoadInst * load = IRB->CreateLoad(intTy, elementPtr);
+				// IRB->CreateCall(hcy_test, myArray, Twine(""));
 			}
 
-
-
-			// Function * mainTest = M.getFunction(StringRef("main"));
-			// IRB = new IRBuilder<>(M.getContext());
-			// if (mainFunc != NULL) {
-			// 	IRB->SetInsertPoint(mainFunc->getEntryBlock().getFirstNonPHIOrDbgOrLifetime());
-			// }
-
-
-			return true ;
+			return true;
 		} // doInitialization.
 
 		virtual bool doFinalization(Module &M) {
@@ -214,8 +182,9 @@ namespace {
 
 			// Fill out.
 			M.dump();
+			of.close();
 
-			return false ;
+			return false;
 		} //doFinalization.
 
 		virtual bool runOnFunction(Function &F) {
@@ -223,14 +192,13 @@ namespace {
 			* module by LLVM */
 
 			// Fill out.
-			FunctionType * ft = F.getFunctionType();
-			ft->dump();
-
 
 			/* Invoke runOnBasicBlock() for each basic block under F. */
-			// for (Function::iterator itr = F.begin() ; itr != F.end() ; itr++) {
-			// 	runOnBasicBlock(*itr) ;
-			// }
+			for (Function::iterator itr = F.begin(); itr != F.end(); itr++) {
+				runOnBasicBlock(*itr);
+				cout << "=============\n";
+			}
+			cout << "*****************\n";
 
 			return true;
 		} //runOnFunction.
@@ -247,8 +215,91 @@ namespace {
 				funcname = disubp->getName();
 			}
 
-			return true ;
+			for (BasicBlock::iterator i = B.begin() ; i != B.end() ; i++) {
+				/* for each instruction of the basic block in order */
+
+				if (i->getOpcode() == Instruction::Br) {
+					cout << i->getOpcodeName() << " - ";
+
+					BranchInst * br = dyn_cast<BranchInst>(i);
+					// br->dump();
+
+					const DebugLoc &debugloc = br->getDebugLoc();
+					int loc = -1;
+					if (debugloc) {
+						loc = debugloc.getLine();
+					}
+
+					cout << loc << endl;
+
+					if (br->isConditional()) {
+						// writing initial data to initCoverage.dat
+						br->dump();
+						branchCount++;
+						branchCondCount[loc]++;
+						writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
+
+						Value * condition = br->getCondition();
+						condition->dump();
+
+						BasicBlock * tDest = br->getSuccessor(0);
+						BasicBlock * fDest = br->getSuccessor(1);
+
+						Value * args[5];
+						args[0] = ConstantInt::get(intTy, branchCount, false);
+						args[1] = ConstantInt::get(intTy, loc, false);
+						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
+						args[3] = ConstantInt::get(intTy, 1, false);
+						args[4] = ConstantInt::get(intTy, 0, false);
+						IRB->SetInsertPoint(&(tDest->front()));
+						IRB->CreateCall(p_probe, args, Twine(""));
+
+
+						args[3] = ConstantInt::get(intTy, 0, false);
+						args[4] = ConstantInt::get(intTy, 1, false);
+						IRB->SetInsertPoint(&(fDest->front()));
+						IRB->CreateCall(p_probe, args, Twine(""));
+					}
+				}
+
+				// if (i->getOpcode() == Instruction::Store) {
+				// 	if (i->getOperand(0)->getType() == intTy) {
+				// 		StoreInst * st = dyn_cast<StoreInst>(i) ;
+
+				// 		/* add a function call to _probe_ right before
+				// 			* a store instruction on an integer variable. */
+
+				// 		const DebugLoc &debugloc = st->getDebugLoc();
+
+				// 		int loc = -1;
+				// 		if (debugloc) {
+				// 			loc = debugloc.getLine();
+				// 		}
+
+				// 		// Value * var = st->getPointerOperand() ; // the target variable 
+				// 		Value * val = st->getOperand(0) ; // the value to be assigned.
+
+				// 		IRB->SetInsertPoint(&(*i));
+
+				// 		Value * args[3] ;
+				// 		args[0] = ConstantInt::get(intTy, loc, false) ; // location of store instruction.
+				// 		args[1] = IRB->CreateGlobalStringPtr(funcname, "") ; // create a new string constant of the variable name, and get the pointer to it.
+				// 		args[2] = val ; // the value to be assigned to the variable.
+				// 		IRB->CreateCall(p_probe, args, Twine("")) ;
+				// 		continue ;
+				// 	}
+				// }	
+			}
+
+			return true;
 		} // runOnBasicBlock.
+	
+	private:
+	    void writeInitData(int idx, int lineNum, int idxNum, int tCnt, int fCnt) {
+			// writer branch information
+			of << to_string(idx) + "," + to_string(lineNum) + "," + to_string(idxNum) + ",";
+			of << to_string(tCnt) + "," + to_string(fCnt) + "\n";
+		}
   };
 }
 
