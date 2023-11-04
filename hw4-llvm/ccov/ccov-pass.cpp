@@ -49,7 +49,8 @@ namespace {
 		FunctionCallee p_final; // points to the function instance of _init_.
 		FunctionCallee p_probe; // points to the function instance of _probe_.
 
-		int branchCount = -1;
+		int condId = -1;
+		int branchCount = 0;
 		int branchCondCount[MAX] = {0};
 		ofstream of;
 
@@ -96,16 +97,17 @@ namespace {
 			 * which accepts 4 arguments (i.e., int, int, int, int)
 			 * to write inital coverage data for each found branch as 0
 			 */
-			Type * args_types[5];
+			Type * args_types[6];
 			args_types[0] = intTy;
 			args_types[1] = intTy;
 			args_types[2] = intTy;
 			args_types[3] = intTy;
 			args_types[4] = intTy;
+			args_types[5] = intTy;
 			p_probe= M.getOrInsertFunction("_probe_", 
 					FunctionType::get(voidTy, ArrayRef<Type *>(args_types), false)) ;
 			
-			of.open("initCoverage.dat", ios::trunc&ios::in);
+			of.open("dbFile.dat", ios::trunc&ios::in);
 			
 			/* add a function call to _init_ at the beginning of 
 			 * the main function*/
@@ -127,7 +129,8 @@ namespace {
 			 * all executions of runOnFunction() under the module. */
 
 			// Fill out.
-			M.dump();
+			// M.dump();
+			// M.print(llvm::outs());
 			of.close();
 
 			return false;
@@ -175,29 +178,33 @@ namespace {
 						BasicBlock * tDest = br->getSuccessor(0);
 						BasicBlock * fDest = br->getSuccessor(1);
 
-						int doWhileFlag = 0;
+						int doType = 0;
 						for (BasicBlock * pred : predecessors(tDest)) {
 							Instruction * termInst = pred->getTerminator();
 							if (termInst->getOpcode() == Instruction::Br) {
 								BranchInst * termBr = dyn_cast<BranchInst>(termInst);
 								if (termBr->isUnconditional()) {
-									doWhileFlag = -1;
+									doType = 1;
 								}
 							}
 						}
 
 						// writing initial data to initCoverage.dat
-						branchCount++;
+						condId++;
+						branchCount += 2;
 						branchCondCount[loc]++;
-						writeInitData(branchCount, loc, branchCondCount[loc]-1, doWhileFlag, 0);
+						writeInitData(
+							condId, loc, branchCondCount[loc]-1,
+							0, 0, branchCount, doType
+						);
 
-
-						Value * args[5];
-						args[0] = ConstantInt::get(intTy, branchCount, false);
+						Value * args[6];
+						args[0] = ConstantInt::get(intTy, condId, false);
 						args[1] = ConstantInt::get(intTy, loc, false);
 						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
 						args[3] = ConstantInt::get(intTy, 1, false);
 						args[4] = ConstantInt::get(intTy, 0, false);
+						args[5] = ConstantInt::get(intTy, branchCount, false);
 						IRB->SetInsertPoint(&(tDest->back()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 
@@ -221,35 +228,45 @@ namespace {
 					int j=0;
 					// for cases
 					for (j=1; j<numSucc; j++) {
+						condId++;
 						branchCount++;
 						branchCondCount[loc]++;
-						writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
+						writeInitData(
+							condId, loc, branchCondCount[loc]-1,
+							0, 0, branchCount, 0
+						);
 
 						BasicBlock * succDest = sw->getSuccessor(j);
 
-						Value * args[5];
-						args[0] = ConstantInt::get(intTy, branchCount, false);
+						Value * args[6];
+						args[0] = ConstantInt::get(intTy, condId, false);
 						args[1] = ConstantInt::get(intTy, loc, false);
 						args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
 						args[3] = ConstantInt::get(intTy, 1, false);
 						args[4] = ConstantInt::get(intTy, 0, false);
+						args[5] = ConstantInt::get(intTy, branchCount, false);
 						IRB->SetInsertPoint(&(succDest->back()));
 						IRB->CreateCall(p_probe, args, Twine(""));
 					}
 
 					// for default
+					condId++;
 					branchCount++;
 					branchCondCount[loc]++;
-					writeInitData(branchCount, loc, branchCondCount[loc]-1, 0, 0);
+					writeInitData(
+						condId, loc, branchCondCount[loc]-1,
+						0, 0, branchCount, 0
+					);
 
 					BasicBlock * succDest = sw->getSuccessor(0);
 
-					Value * args[5];
-					args[0] = ConstantInt::get(intTy, branchCount, false);
+					Value * args[6];
+					args[0] = ConstantInt::get(intTy, condId, false);
 					args[1] = ConstantInt::get(intTy, loc, false);
 					args[2] = ConstantInt::get(intTy, branchCondCount[loc]-1, false);
 					args[3] = ConstantInt::get(intTy, 1, false);
 					args[4] = ConstantInt::get(intTy, 0, false);
+					args[5] = ConstantInt::get(intTy, branchCount, false);
 					IRB->SetInsertPoint(&(succDest->front()));
 					IRB->CreateCall(p_probe, args, Twine(""));
 				}
@@ -259,10 +276,11 @@ namespace {
 		} // runOnBasicBlock.
 	
 	private:
-	    void writeInitData(int idx, int lineNum, int idxNum, int tCnt, int fCnt) {
+	    void writeInitData(int idx, int lineNum, int idxNum, int tCnt, int fCnt, int bCnt, int type) {
 			// writer branch information
 			of << to_string(idx) + "," + to_string(lineNum) + "," + to_string(idxNum) + ",";
-			of << to_string(tCnt) + "," + to_string(fCnt) + "\n";
+			of << to_string(tCnt) + "," + to_string(fCnt) + "," + to_string(bCnt) + ",";
+			of << to_string(type) + "\n";
 		}
   };
 }
