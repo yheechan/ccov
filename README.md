@@ -1,6 +1,6 @@
 # ccov
 
-This repository demonstrates an implementation of [LLVM Pass](https://github.com/yheechan/ccov/blob/master/hw4-llvm/ccov/ccov-pass.cpp) that instruments target C/C++ source code in order to measure the coverage in [LLVM IR](https://llvm.org/docs/LangRef.html) (Intermediate Representation) level. It utilizes a [runtime module](https://github.com/yheechan/ccov/blob/master/hw4-llvm/ccov/ccov-rt.c) during coverage measurement.
+This repository demonstrates an implementation of [LLVM Pass](https://github.com/yheechan/ccov/blob/master/hw4-llvm/ccov/ccov-pass.cpp) that instruments target C/C++ source code at LLVM IR level in order to measure the coverage in [LLVM IR](https://llvm.org/docs/LangRef.html) (Intermediate Representation) level. It utilizes a [runtime module](https://github.com/yheechan/ccov/blob/master/hw4-llvm/ccov/ccov-rt.c) during coverage measurement.
 
 ## Prerequisites
 1. Clang/LLVM, developed on version 13.0.1, not tested on other versions.
@@ -19,7 +19,7 @@ $ test1.sh
 $ test2.sh
 $ test3.sh
 ```
-Each test script has its own unique command of executing **grep** executable file. At each execution, the coverage results are updated on [Coverage.dat](https://github.com/yheechan/ccov/blob/master/hw4-llvm/test/grep/Coverage.dat).
+Each test script has its own unique command of executing ```grep``` executable file. At each execution, the coverage results are updated on [Coverage.dat](https://github.com/yheechan/ccov/blob/master/hw4-llvm/test/grep/Coverage.dat).
 
 ## Reproducing Project (target subject: test/example.c)
 Following build command produces an executable which is built from an instrumented example.c. Executing **example-ccov** produces a [Coverage.dat](https://github.com/yheechan/ccov/blob/master/hw4-llvm/test/Coverage.dat) file which shows the results of coverage.
